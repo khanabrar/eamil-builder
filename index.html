@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Email Template Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.9.0/mammoth.browser.min.js"></script>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="logo">✉ Email Builder</span>
+    <input class="name" id="docName" value="Untitled Email" />
+    <div class="spacer"></div>
+    <button class="btn" id="newBtn" title="Reset / start a new email">⟲ Reset</button>
+    <button class="btn" id="undoBtn" title="Undo">↶</button>
+    <button class="btn" id="redoBtn" title="Redo">↷</button>
+    <button class="btn primary" id="uploadBtn">⬆ Upload DOCX/HTML</button>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="build">Builder</button>
+    <button class="tab" data-tab="code">Code</button>
+    <button class="tab" data-tab="preview">Preview</button>
+  </div>
+
+  <div class="main">
+    <!-- LEFT -->
+    <aside id="leftPanel">
+      <div class="sec-title">Content Blocks</div>
+      <div class="palette" id="palContent"></div>
+      <div class="sec-title">Layout Blocks</div>
+      <div class="palette" id="palLayout"></div>
+      <div class="sec-title">Templates</div>
+      <div id="tplList"></div>
+    </aside>
+
+    <!-- CENTER -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden" id="center">
+      <!-- build view -->
+      <div class="canvas-wrap" id="buildView">
+        <div class="canvas" id="canvas"></div>
+      </div>
+      <!-- code view -->
+      <div class="codewrap" id="codeView" style="display:none">
+        <div>
+          <div class="lbl">HTML <button class="btn" id="copyCode" style="float:right;padding:2px 8px">Copy</button></div>
+          <textarea class="code" id="codeArea" readonly></textarea>
+        </div>
+        <div style="border-left:1px solid var(--bd)">
+          <div class="lbl">Live Preview</div>
+          <iframe id="codePreview"></iframe>
+        </div>
+      </div>
+      <!-- preview view -->
+      <div id="previewView" style="display:none;flex:1;flex-direction:column">
+        <div class="preview-bar">
+          <span class="seg active" data-w="600">🖥 Desktop</span>
+          <span class="seg" data-w="480">📱 Tablet</span>
+          <span class="seg" data-w="360">📱 Mobile</span>
+        </div>
+        <div class="preview-stage"><div class="preview-frame" id="pframe" style="width:600px"><iframe id="bigPreview" style="height:78vh"></iframe></div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <aside class="right" id="inspector"></aside>
+  </div>
+</div>
+
+<!-- upload modal -->
+<div class="modal" id="modal">
+  <div class="box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <b>Upload &amp; Convert</b><button class="btn" id="closeModal">✕</button>
+    </div>
+    <div class="drop" id="dropZone">
+      <div style="font-size:34px">⬆</div>
+      <div id="dropText">Drop a .docx or .html file here, or click to choose</div>
+      <small style="display:block;margin-top:6px">Converts to email-safe blocks automatically</small>
+    </div>
+    <input type="file" id="fileInput" accept=".docx,.html,.htm" hidden />
+    <div id="analysis" style="display:none">
+      <div class="stat" id="statGrid"></div>
+      <div id="imgFix" style="max-height:210px;overflow:auto;margin-top:12px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+        <button class="btn" id="convAnother">Convert another</button>
+        <button class="btn primary" id="importBtn">Import into editor</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/main.js"></script>
+</body>
+</html>
