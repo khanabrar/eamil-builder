@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Email Template Builder</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.9.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/docx-preview/dist/docx-preview.min.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -16,7 +19,7 @@
     <button class="btn" id="newBtn" title="Reset / start a new email">⟲ Reset</button>
     <button class="btn" id="undoBtn" title="Undo">↶</button>
     <button class="btn" id="redoBtn" title="Redo">↷</button>
-    <button class="btn primary" id="uploadBtn">⬆ Upload DOCX/HTML</button>
+    <button class="btn primary" id="uploadBtn">⬆ Upload File</button>
   </header>
 
   <div class="tabs">
@@ -77,11 +80,15 @@
     </div>
     <div class="drop" id="dropZone">
       <div style="font-size:34px">⬆</div>
-      <div id="dropText">Drop a .docx or .html file here, or click to choose</div>
-      <small style="display:block;margin-top:6px">Converts to email-safe blocks automatically</small>
+      <div id="dropText">Drop a Word, PDF, image, text or HTML file here, or click to choose</div>
+      <small style="display:block;margin-top:6px">Preserves the original design exactly — colors, backgrounds, images, tables, headers &amp; footers</small>
     </div>
-    <input type="file" id="fileInput" accept=".docx,.html,.htm" hidden />
+    <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.svg" hidden />
     <div id="analysis" style="display:none">
+      <div id="pdfModeRow" style="display:none;gap:8px;margin-bottom:12px">
+        <button class="btn" id="pdfModeImg" style="flex:1">🖼 Exact image (pixel-perfect)</button>
+        <button class="btn" id="pdfModeTxt" style="flex:1">📝 Editable text (approx. layout)</button>
+      </div>
       <div class="stat" id="statGrid"></div>
       <div id="imgFix" style="max-height:210px;overflow:auto;margin-top:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">

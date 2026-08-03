@@ -1,4 +1,5 @@
 
+if(window['pdfjsLib']){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -31,6 +32,24 @@ function snapshot(){past.push(structuredClone(doc));if(past.length>50)past.shift
 function undo(){if(!past.length)return;future.push(structuredClone(doc));doc=past.pop();selected=null;renderAll();}
 function redo(){if(!future.length)return;past.push(structuredClone(doc));doc=future.pop();renderAll();}
 function findBlk(id,list=doc.blocks){for(const b of list){if(b.id===id)return b;if(b.cols)for(const c of b.cols){const f=findBlk(id,c);if(f)return f;}}return null;}
+// Wires an imported "raw" block's iframe for in-place WYSIWYG editing: makes
+// the body contentEditable, autosizes the frame, and syncs changes back into
+// the block's content (and the live code/preview panes) whenever the user
+// clicks away. Runs on the iframe's onload attribute.
+function wireRawFrame(iframe,id){
+  try{
+    const idoc=iframe.contentDocument;
+    idoc.body.setAttribute('contenteditable','true');
+    idoc.body.style.outline='none';
+    idoc.body.style.cursor='text';
+    iframe.style.height=idoc.documentElement.scrollHeight+'px';
+    idoc.body.addEventListener('input',()=>{iframe.style.height=idoc.documentElement.scrollHeight+'px';});
+    idoc.body.addEventListener('blur',()=>{
+      const b=findBlk(id);
+      if(b){b.content=idoc.body.innerHTML;updateLive();}
+    });
+  }catch(e){iframe.style.height='400px';}
+}
 
 /* ---------- palette ---------- */
 const PAL_CONTENT=[['text','📝','Text'],['heading','🔤','Heading'],['button','🔘','Button'],['divider','➖','Divider'],['spacer','↕','Spacer'],['image','🖼','Image'],['video','▶','Video']/*['social','🔗','Social']*/];
@@ -62,10 +81,17 @@ function renderEditorBlock(b){
     case 'columns2': case 'columns3':
       inner=`<div style="display:flex;gap:10px;padding:${s.py}px 14px">${b.cols.map((c,i)=>`<div style="flex:1;min-height:46px;border:1px dashed #cbd5e1;border-radius:6px;padding:6px" data-col="${b.id}:${i}">${c.length?c.map(renderEditorBlock).join(''):`<div style="text-align:center;color:#aaa;font-size:11px;padding:8px">Col ${i+1}</div>`}</div>`).join('')}</div>`;break;
     case 'raw':{
-      // Imported HTML is rendered inside a sandboxed iframe so its styles are
-      // isolated from the builder UI and its appearance is shown exactly as-is.
+      // Imported content (docx/pdf/txt/html) is rendered inside a sandboxed
+      // iframe so its own styles/tables are isolated from the builder UI and
+      // shown exactly as-is. The iframe body is made directly contentEditable
+      // once loaded (see wireRawFrame), so the original layout — including
+      // tables — can be edited in place, in addition to editing the raw HTML
+      // in the inspector panel on the right. Wrapped in a max-width:100%,
+      // overflow-x:auto div so content wider than the canvas (e.g. a DOCX
+      // page sized for print) scrolls within itself instead of stretching
+      // the whole canvas — keeps it responsive without altering appearance.
       const safe=(b.content||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-      inner=`<iframe sandbox="allow-same-origin" srcdoc="${safe}" style="width:100%;border:0;display:block;background:#fff;pointer-events:none" onload="try{this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'}catch(e){this.style.height='400px'}"></iframe>`;break;
+      inner=`<div style="max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch"><iframe sandbox="allow-same-origin" srcdoc="${safe}" style="width:100%;border:0;display:block;background:#fff" onload="wireRawFrame(this,'${b.id}')"></iframe></div>`;break;
     }
   }
   const tools=`<div class="tools"><button data-act="dup" data-id="${b.id}">⧉</button><button data-act="del" data-id="${b.id}">🗑</button></div>`;
@@ -88,9 +114,10 @@ function renderInspector(){
   }
   const s=b.style||{};
   if(b.type==='raw'){
-    inspector.innerHTML=`<div class="sec-title">imported HTML</div>`
+    inspector.innerHTML=`<div class="sec-title">Imported content</div>`
+      +`<p style="color:var(--mut);font-size:12px;margin:-4px 0 12px">Click directly into the block on the canvas to edit text/tables in place, or edit the raw HTML below — either way stays in sync.</p>`
       +inspField('HTML (CSS already inlined — edit directly)',`<textarea data-f="content" style="height:300px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">${(b.content||'').replace(/</g,'&lt;')}</textarea>`)
-      +`<p style="color:var(--mut);font-size:12px;margin-top:10px">This block keeps your uploaded layout and styling untouched. Its CSS has been inlined for email clients.</p>`;
+      +`<p style="color:var(--mut);font-size:12px;margin-top:10px">This block keeps your uploaded layout, tables and styling exactly as imported. Its CSS has been inlined for email-client support.</p>`;
     return;
   }
   const hasText=['heading','text','button','hero','header','footer'].includes(b.type);
@@ -128,7 +155,7 @@ function emailRow(b){
     case 'heading': case 'text':
       return `<tr><td style="padding:${pad(s)};font-family:${FONT};font-size:${s.fontSize}px;color:${s.color};font-weight:${s.weight||400};text-align:${s.align};line-height:1.5;word-break:break-word">${b.content}</td></tr>`;
     case 'button': return bb(b);
-    case 'raw': return `<tr><td style="padding:0">${b.content}</td></tr>`;
+    case 'raw': return `<tr><td style="padding:0"><div style="max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch">${b.content}</div></td></tr>`;
     case 'divider': return `<tr><td style="padding:${pad(s)}"><table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="${TBL}"><tr><td style="border-top:1px solid ${s.color};font-size:0;line-height:0">&nbsp;</td></tr></table></td></tr>`;
     case 'spacer': return `<tr><td style="height:${s.height}px;line-height:${s.height}px;font-size:0">&nbsp;</td></tr>`;
     case 'image': {const im=`<img src="${b.src}" alt="${b.alt||''}" width="${s.width}" style="width:100%;max-width:${s.width}px;height:auto;margin:0 auto;${IMGRESET}">`;return `<tr><td align="${s.align}" style="padding:${pad(s)}">${b.href?`<a href="${b.href}" style="text-decoration:none">${im}</a>`:im}</td></tr>`;}
@@ -263,13 +290,170 @@ dropZone.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files[0])handleFile(e.d
 fileInput.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
 convAnother.onclick=()=>{analysis.style.display='none';dropZone.style.display='block';};
 let convertedHtml='', rawHtml='', uploadKind='docx';
-async function handleFile(file){
+const IMAGE_EXT=/\.(png|jpe?g|gif|webp|svg)$/i;
+function escHtml(str){return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function tableHtml(rows){
+  return `<table style="border-collapse:collapse;width:100%;font-size:14px;margin:8px 0">${rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid #ddd;padding:6px 8px">${escHtml(c)}</td>`).join('')}</tr>`).join('')}</table>`;
+}
+function normalizeCols(rows){
+  const max=Math.max(...rows.map(r=>r.length));
+  return rows.map(r=>{const c=r.slice();while(c.length<max)c.push('');return c;});
+}
+// .txt -> paragraphs, but rows that look tabular (tab- or multi-space-delimited,
+// repeated across consecutive lines) are reconstructed as real <table> markup
+// so aligned/tabular text keeps its structure instead of collapsing to prose.
+function splitTxtRow(line){
+  if(line.includes('\t'))return line.split('\t').map(s=>s.trim());
+  const parts=line.split(/ {2,}/).map(s=>s.trim()).filter(s=>s.length);
+  return parts.length>1?parts:null;
+}
+function textToHtml(text){
+  const rawLines=text.replace(/\r\n/g,'\n').split('\n');
+  const blocks=[];let para=[];let tbl=null;
+  const flushPara=()=>{if(para.length){blocks.push(`<p>${escHtml(para.join('\n')).replace(/\n/g,'<br>')}</p>`);para=[];}};
+  const flushTable=()=>{if(tbl&&tbl.length){blocks.push(tableHtml(normalizeCols(tbl)));tbl=null;}};
+  rawLines.forEach(line=>{
+    if(!line.trim()){flushPara();flushTable();return;}
+    const cells=splitTxtRow(line);
+    if(cells){flushPara();(tbl=tbl||[]).push(cells);}
+    else{flushTable();para.push(line);}
+  });
+  flushPara();flushTable();
+  return blocks.join('\n')||'<p></p>';
+}
+// image file -> data URL wrapped in <img>, imported directly as an image block
+function fileToDataUrl(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('Could not read image'));r.readAsDataURL(file);});
+}
+async function imageFileToHtml(file){
+  const url=await fileToDataUrl(file);
+  return `<img src="${url}" alt="${escHtml(file.name.replace(/\.[^.]+$/,''))}">`;
+}
+// PDF -> extract each page's positioned text, group it into lines by y-coordinate,
+// then split each line into cells wherever there's a large horizontal gap. Runs of
+// consecutive multi-cell lines are reconstructed as a real <table> (this is how
+// tables in PDFs, which have no semantic table tag, get rebuilt); single-cell
+// lines stay as normal paragraphs. Page breaks become <hr> dividers.
+async function pdfToHtml(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const content=await page.getTextContent();
+    if(!content.items.length){pages.push(`<p><em>[Page ${i} has no extractable text — it may be a scanned image]</em></p>`);continue;}
+    const items=content.items.map(it=>({str:it.str,x:it.transform[4],y:Math.round(it.transform[5]),w:it.width}));
+    const lineMap=[];
+    items.forEach(it=>{
+      let bucket=lineMap.find(b=>Math.abs(b.y-it.y)<=2);
+      if(!bucket){bucket={y:it.y,items:[]};lineMap.push(bucket);}
+      bucket.items.push(it);
+    });
+    lineMap.sort((a,b)=>b.y-a.y);
+    lineMap.forEach(b=>b.items.sort((a,b)=>a.x-b.x));
+    const rows=lineMap.map(({items:arr})=>{
+      const cells=[];let cur=arr[0].str;let curEnd=arr[0].x+arr[0].w;
+      for(let j=1;j<arr.length;j++){
+        const it=arr[j];const gap=it.x-curEnd;
+        if(gap>10){cells.push(cur.trim());cur=it.str;}else cur+=it.str;
+        curEnd=it.x+it.w;
+      }
+      if(cur.trim())cells.push(cur.trim());
+      return cells.filter(c=>c.length);
+    });
+    const blocks=[];let tbl=null;
+    rows.forEach(r=>{
+      if(r.length>1){(tbl=tbl||[]).push(r);}
+      else{
+        if(tbl){blocks.push(tableHtml(normalizeCols(tbl)));tbl=null;}
+        if(r.length===1&&r[0])blocks.push(`<p>${escHtml(r[0])}</p>`);
+      }
+    });
+    if(tbl)blocks.push(tableHtml(normalizeCols(tbl)));
+    pages.push(blocks.join('\n')||'<p></p>');
+  }
+  return pages.join('\n<hr>\n');
+}
+// DOCX -> rendered with docx-preview, which reproduces Word's actual layout
+// engine (colors, background shading, table borders/merges, images, and
+// headers/footers per page) far more faithfully than a semantic converter.
+// Falls back to Mammoth (semantic HTML only, no colors/headers/footers) if
+// docx-preview didn't load.
+async function docxToHtmlExact(file){
+  if(!(window.docx && window.docx.renderAsync))return null;
+  const buf=await file.arrayBuffer();
+  const bodyHost=document.createElement('div');
+  bodyHost.style.cssText='position:fixed;left:-99999px;top:0;width:816px;';
+  const styleHost=document.createElement('div');
+  document.body.appendChild(bodyHost);
+  try{
+    await window.docx.renderAsync(buf,bodyHost,styleHost,{
+      inWrapper:true,ignoreWidth:false,ignoreHeight:false,breakPages:true,
+      renderHeaders:true,renderFooters:true,renderFootnotes:true,renderEndnotes:true,
+      experimental:true,useBase64URL:true,trimXmlDeclaration:true
+    });
+    return styleHost.innerHTML+bodyHost.innerHTML;
+  }catch(e){return null;}
+  finally{bodyHost.remove();}
+}
+// PDF -> each page rasterized to a full-resolution PNG via pdf.js's canvas
+// renderer. This reproduces the page pixel-for-pixel (colors, backgrounds,
+// images, table borders, headers/footers) since it IS the rendered PDF —
+// the trade-off is the text is no longer selectable/editable at word level.
+async function pdfToImagesHtml(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const parts=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const viewport=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');
+    canvas.width=viewport.width;canvas.height=viewport.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+    parts.push(`<div style="line-height:0"><img src="${canvas.toDataURL('image/png')}" alt="Page ${i}" style="width:100%;display:block"></div>`);
+  }
+  return parts.join('\n');
+}
+let currentFile=null, pdfMode='image';
+async function switchPdfMode(mode){
+  if(!currentFile||pdfMode===mode)return;
+  pdfMode=mode;
   dropText.textContent='Converting…';
   try{
+    const html=mode==='image'?await pdfToImagesHtml(currentFile):await pdfToHtml(currentFile);
+    rawHtml=html;convertedHtml=cleanImported(html);
+    showAnalysis(convertedHtml);
+  }catch(err){toastMsg('Conversion failed: '+err.message);}
+}
+pdfModeImg.onclick=()=>switchPdfMode('image');
+pdfModeTxt.onclick=()=>switchPdfMode('text');
+async function handleFile(file){
+  dropText.textContent='Converting…';
+  currentFile=file;
+  try{
     let html='';
-    if(file.name.endsWith('.docx')){const buf=await file.arrayBuffer();const r=await mammoth.convertToHtml({arrayBuffer:buf});html=r.value;uploadKind='docx';}
-    else{html=await file.text();uploadKind='html';rawHtml=html;}
-    convertedHtml=cleanImported(html);
+    const name=file.name.toLowerCase();
+    if(name.endsWith('.docx')){
+      uploadKind='docx';
+      html=await docxToHtmlExact(file);
+      if(!html){const buf=await file.arrayBuffer();const r=await mammoth.convertToHtml({arrayBuffer:buf});html=r.value;}
+    } else if(name.endsWith('.doc')){
+      throw new Error('Legacy .doc isn\'t supported — please save as .docx and re-upload.');
+    } else if(name.endsWith('.pdf')){
+      if(!window['pdfjsLib'])throw new Error('PDF engine failed to load. Check your connection and try again.');
+      uploadKind='pdf';pdfMode='image';
+      html=await pdfToImagesHtml(file);
+    } else if(name.endsWith('.txt')){
+      html=textToHtml(await file.text());uploadKind='text';
+    } else if(IMAGE_EXT.test(name)){
+      html=await imageFileToHtml(file);uploadKind='image';
+    } else if(name.endsWith('.html')||name.endsWith('.htm')){
+      html=await file.text();uploadKind='html';
+    } else {
+      throw new Error('Unsupported file type. Try .docx, .pdf, .txt, an image, or .html.');
+    }
+    rawHtml=html; // exact, uncleaned source used for the final "preserve layout" import
+    convertedHtml=cleanImported(html); // sanitized copy used only for the analysis/stats screen
     showAnalysis(convertedHtml);
   }catch(err){dropText.textContent='Conversion failed: '+err.message;}
 }
@@ -327,10 +511,20 @@ function inlineCss(html){
 }
 function showAnalysis(html){
   const d=document.createElement('div');d.innerHTML=html;
-  const stats=[['Headings',d.querySelectorAll('h1,h2,h3,h4').length],['Paragraphs',d.querySelectorAll('p').length],['Images',d.querySelectorAll('img').length],['Tables',d.querySelectorAll('table').length],['Links',d.querySelectorAll('a').length],['Lists',d.querySelectorAll('ul,ol').length]];
+  const isPdfImageMode=uploadKind==='pdf'&&pdfMode==='image';
+  pdfModeRow.style.display=uploadKind==='pdf'?'flex':'none';
+  if(uploadKind==='pdf'){
+    pdfModeImg.classList.toggle('primary',pdfMode==='image');
+    pdfModeTxt.classList.toggle('primary',pdfMode==='text');
+  }
+  const stats=isPdfImageMode
+    ?[['Pages',d.querySelectorAll('img').length]]
+    :[['Headings',d.querySelectorAll('h1,h2,h3,h4').length],['Paragraphs',d.querySelectorAll('p').length],['Images',d.querySelectorAll('img').length],['Tables',d.querySelectorAll('table').length],['Links',d.querySelectorAll('a').length],['Lists',d.querySelectorAll('ul,ol').length]];
   statGrid.innerHTML=stats.map(([l,n])=>`<div><b>${n}</b><br><small>${l}</small></div>`).join('');
-  // per-image URL editor — works for both DOCX (often embedded/base64) and HTML
-  const imgs=[...d.querySelectorAll('img')];
+  // per-image URL editor — works for DOCX/HTML embedded images. Skipped for
+  // exact-image PDF pages: those <img> tags ARE the page renders, not
+  // separate assets meant to be swapped for a hosted URL.
+  const imgs=isPdfImageMode?[]:[...d.querySelectorAll('img')];
   if(imgs.length){
     imgFix.innerHTML=`<div class="sec-title" style="margin:4px 0 8px">Images — add / replace hosted URL (${imgs.length})</div>`
       +imgs.map((im,i)=>{
@@ -341,7 +535,7 @@ function showAnalysis(html){
         const val=isData?'':cur.replace(/"/g,'&quot;');
         return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">${thumb}<input data-imgidx="${i}" placeholder="${ph}" value="${val}" style="flex:1;background:var(--panel2);border:1px solid var(--bd);border-radius:6px;color:var(--tx);padding:6px 8px;font-size:12px"></div>`;
       }).join('');
-  } else { imgFix.innerHTML=''; }
+  } else { imgFix.innerHTML=isPdfImageMode?'<p style="color:var(--mut);font-size:12px">Each page is captured as a pixel-exact image, so colors, backgrounds, tables and headers/footers match the original PDF exactly.</p>':''; }
   dropZone.style.display='none';analysis.style.display='block';
 }
 // rewrite <img> srcs from the modal inputs, before block-conversion / inlining
@@ -375,15 +569,25 @@ function importToBlocks(html){
 }
 importBtn.onclick=()=>{
   snapshot();
-  if(uploadKind==='html'){
-    const fixed=applyImgUrls(rawHtml,true);
-    const b=makeBlock('raw'); b.content=inlineCss(fixed); doc.blocks=[b];
+  if(uploadKind==='image'){
+    // single image, no structure to preserve besides the picture itself
+    const fixed=applyImgUrls(rawHtml,false);
+    const tmp=document.createElement('div');tmp.innerHTML=fixed;
+    const im=tmp.querySelector('img');
+    const b=makeBlock('image');
+    if(im){b.src=im.getAttribute('src')||'';b.alt=im.getAttribute('alt')||'';}
+    doc.blocks=[b];
   } else {
-    const fixed=applyImgUrls(convertedHtml,false);
-    doc.blocks=importToBlocks(fixed);
+    // docx / pdf / txt / html all go through the same "preserve exact layout"
+    // path: original structure (including any tables) stays intact as real
+    // HTML, CSS gets inlined for email-client support, and it lands as one
+    // directly-editable block (click into it on the canvas, or edit the raw
+    // HTML in the panel on the right).
+    const fixed=applyImgUrls(rawHtml,uploadKind==='html');
+    const b=makeBlock('raw'); b.content=inlineCss(fixed); doc.blocks=[b];
   }
-  selected=null;modal.classList.remove('show');analysis.style.display='none';dropZone.style.display='block';dropText.textContent='Drop a .docx or .html file here, or click to choose';renderAll();
-  toastMsg(uploadKind==='html'?'HTML imported (CSS inlined, layout preserved)':'Imported into editor');
+  selected=null;modal.classList.remove('show');analysis.style.display='none';dropZone.style.display='block';dropText.textContent='Drop a Word, PDF, image, text or HTML file here, or click to choose';renderAll();
+  toastMsg(uploadKind==='image'?'Image imported':'Imported — original layout & tables preserved exactly, ready to edit');
 };
 
 /* ---------- export buttons (added to inspector area via toast helper) ---------- */
