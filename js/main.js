@@ -249,7 +249,7 @@ undoBtn.onclick=undo;redoBtn.onclick=redo;
 function resetDoc(){
   if(!confirm('Reset and start a new email? This clears the current canvas.'))return;
   snapshot(); // keep the previous state recoverable via Undo
-  doc={name:'Untitled Email',bg:'#f4f4f7',width:600,blocks:[]};
+  doc={name:'Name Your Email Template Here',bg:'#f4f4f7',width:600,blocks:[]};
   selected=null;
   try{localStorage.removeItem('eb-doc');}catch(e){}
   renderAll();toastMsg('Started a new email');
