@@ -26,7 +26,7 @@ const DEFAULTS = {
 function makeBlock(type){return {id:uid(),type,...structuredClone(DEFAULTS[type]||{style:{}})};}
 
 /* ---------- state + history ---------- */
-let doc={name:'Untitled Email',bg:'#f4f4f7',width:600,blocks:[]};
+let doc={name:'Name Your Email Template',bg:'#f4f4f7',width:600,blocks:[]};
 let selected=null, past=[], future=[];
 function snapshot(){past.push(structuredClone(doc));if(past.length>50)past.shift();future=[];}
 function undo(){if(!past.length)return;future.push(structuredClone(doc));doc=past.pop();selected=null;renderAll();}
